@@ -1,0 +1,76 @@
+#REG
+### Empty json
+POST http://127.0.0.1:8888/reg HTTP/1.1
+content-type: application/json
+
+{
+    
+}
+
+### Missing parameter
+POST http://127.0.0.1:8888/reg HTTP/1.1
+content-type: application/json
+
+{
+    "username": "xxxxx",
+    "email": "xxxxx@mail.xx",
+    "password": "xxxxxx.1"
+}
+
+### Validation test
+POST http://127.0.0.1:8888/reg HTTP/1.1
+content-type: application/json
+
+{
+    "username": "",
+    "email": "",
+    "password": ""
+}
+
+### Legit test 
+POST http://127.0.0.1:8888/reg HTTP/1.1
+content-type: application/json
+
+{
+    "username": "xxxxx",
+    "email": "xxxxx@mail.xx",
+    "password": "xxxxxx.1"
+}
+
+
+
+
+#AUTH
+### Empty json
+POST http://127.0.0.1:8888/auth HTTP/1.1
+content-type: application/json
+
+{
+
+}
+
+### Missing parameter
+POST http://127.0.0.1:8888/auth HTTP/1.1
+content-type: application/json
+
+{
+    "email": "xxxxx@mail.xx"
+}
+
+### Validation test
+POST http://127.0.0.1:8888/auth HTTP/1.1
+content-type: application/json
+
+{
+    "email": "",
+    "password": ""
+}
+
+### Legit test 
+POST http://127.0.0.1:8888/auth HTTP/1.1
+content-type: application/json
+
+{
+    "email": "xxxxx@mail.xx",
+    "password": "xxxxxx.1"
+}

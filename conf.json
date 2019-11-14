@@ -1,0 +1,22 @@
+{
+    "appCONF": {
+        "domain": "0.0.0.0",
+        "port": 8888,
+        "secret_jwt": ""
+    },
+    "postgresqlCONF": {
+      "host": "",
+      "user": "",
+      "pass": "",
+      "dbname": "",
+      "consize": 10
+    },
+    "smtpCONF": {
+        "server": "smtp.some.com",
+        "port": 465,
+        "user": "",
+        "pass": ""
+    }
+}
+
+
