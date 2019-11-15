@@ -318,9 +318,9 @@ proc cb(req: Request) {.async, gcsafe.} =
   let rheader = newHttpHeaders([("Content-Type","application/json")])
   #echo req
   #echo req.headers["Authorization"]
-  
 
-  if req.headers.hasKey("Authorization"):
+
+  if not req.headers.hasKey("Authorization"):
     errors.add("No authorization header")
     await req.respond(Http400, $(%*{"error":errors}), rheader)
     return
