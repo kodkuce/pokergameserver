@@ -378,5 +378,5 @@ proc cb(req: Request) {.async, gcsafe.} =
   playerConnections[taken_connection_slot] = nil
   
 
-asyncCheck server.serve(Port(CONF["appCONF"]["secret_jwt"].getint()), cb)
+asyncCheck server.serve(Port(CONF["appCONF"]["port"].getint()), cb)
 runForever()
