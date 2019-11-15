@@ -1,0 +1,21 @@
+{
+    "appCONF": {
+        "ip": "0.0.0.0",
+        "port": 9201,
+        "secret_jwt": "",
+        "looby_ip": "0.0.0.0",
+        "looby_port": 9101,
+        "min_buyin": 1000,
+        "max_buyin": 10000,
+        "small_blind": 100,
+        "big_blind": 200
+    },
+    "postgresqlCONF": {
+      "host": "",
+      "user": "",
+      "pass": "",
+      "dbname": "",
+      "consize": 2
+    }
+}
+
