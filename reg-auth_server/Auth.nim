@@ -14,7 +14,7 @@ import smtp, pg
 let CONF = parseJson(readFile("../conf.json"))
 
 
-var secret_jwt = CONF["appCONF"]["domain"].getStr()
+var secret_jwt = CONF["appCONF"]["secret_jwt"].getStr()
 let pgpool = newAsyncPool( 
   CONF["postgresqlCONF"]["host"].getStr(), 
   CONF["postgresqlCONF"]["user"].getStr(),
