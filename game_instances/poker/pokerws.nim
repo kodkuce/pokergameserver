@@ -1,11 +1,17 @@
 import jwt, times, tables, json, strutils, random, sequtils, algorithm
-import asynchttpserver, asyncdispatch, ws
+import asynchttpserver, asyncdispatch, ws, pg
+
+
+
 
 randomize()
 
 type
   CategoryHand {.pure } = enum
     HighCard, OnePair, TwoPair, Triples, Straight, Flush, FullHouse, Quads, StraightFlush, RoyalFlush
+
+  Status {.pure } = enum
+    Ready, StartedRound, Folded
 
   Player* = ref object
     id* : int
@@ -19,7 +25,7 @@ type
     player:Player
     money:int
     money_round:int
-    status:string
+    status:Status
     card_1:Card
     card_2:Card
     best_hand:seq[Card]
@@ -39,6 +45,7 @@ type
     atm_raise:int
     last_raised:int
     delt_cards:seq[int]
+  
 
 const suit_txt = ["♠", "♥", "♦", "♣"]
 const rank_txt = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"]
@@ -46,11 +53,21 @@ const rank_txt = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "
 var playerConnections = newSeq[Player](500)
 let CONF = parseJson(readFile("conf.json"))
 var secret_jwt = CONF["appCONF"]["secret_jwt"].getStr()
-
+let pgpool = newAsyncPool( 
+  CONF["postgresqlCONF"]["host"].getStr(), 
+  CONF["postgresqlCONF"]["user"].getStr(),
+  CONF["postgresqlCONF"]["pass"].getStr(),
+  CONF["postgresqlCONF"]["dbname"].getStr(),
+  CONF["postgresqlCONF"]["connpool"].getInt())
 
 
 proc ToText(c:Card): string=
   result = suit_txt[c.suit] & rank_txt[c.rank-2]
+
+proc init_table(pt: var PokerTable)=
+  for i in 0 .. 8:
+    var ps = PlayerSlot(player:nil)
+    pt.player_slots.add(ps)
 
 proc deck_fill(pt: var PokerTable)=
   pt.deck.setLen(0)
@@ -66,10 +83,10 @@ proc next_random_card( pt: var PokerTable): int=
 proc deal_to_players(pt: var PokerTable)=
   pt.delt_cards.setLen(0)
   for ps in mitems(pt.player_slots):
-    if ps.status == "Ready":
+    if ps.status == Status.Ready :
       ps.card_1 = pt.deck[next_random_card(pt)]
       ps.card_2 = pt.deck[next_random_card(pt)]
-      ps.status = "StartedRound"
+      ps.status = Status.StartedRound
 
 proc deal_table_flop(pt: var PokerTable)=
   pt.on_t = newSeq[Card](5)
@@ -224,7 +241,7 @@ proc best_hand_slot(pt: var PokerTable, slot:int)=
 proc best_slot(pt: var PokerTable)=
   var processing_list:seq[PlayerSlot]
   for i in 0..pt.player_slots.len()-1:
-    if pt.player_slots[i].status == "StartedRound":
+    if pt.player_slots[i].status == Status.StartedRound:
       pt.best_hand_slot(i)
       processing_list.add(pt.player_slots[i])
 
@@ -308,6 +325,42 @@ proc best_slot(pt: var PokerTable)=
       processing_list.delete(0,same_cat_count)
       endrank = endrank + 1
 
+proc player_sit(pt: var PokerTable, who:Player, wanted_slot:int, points:int){.async, gcsafe.}=
+  var errors = newSeq[string]()
+
+  if pt.player_slots[wanted_slot].player != nil:
+    echo "Slot allready taken"
+  
+  let ok = await pgpool.rows(sql"Call remove_points(?,?)", @[intToStr(who.id), intToStr(points)])
+  if ok[0][0].parseInt() < 0:
+    echo "Failed to remove remove points"
+  else:
+    pt.player_slots[wanted_slot].player = who
+    pt.player_slots[wanted_slot].money = points
+    pt.player_slots[wanted_slot].status = Status.Ready
+
+
+
+var pokert = PokerTable()
+pokert.init_table()
+
+proc run_game_loop() {.async.}=
+  #check minimum 2 ready player
+  var cnt = 0
+  for p in pokert.player_slots:
+    if p.status == Status.Ready:
+      cnt = cnt + 1
+  if cnt < 2:
+    await sleepAsync(2000)
+    echo "Not enought players"
+    asyncCheck run_game_loop();
+    return;
+
+  #if more then too start game
+  for p in 0 .. pokert.player_slots.len-1:
+    echo p
+
+
 
 
 var server = newAsyncHttpServer()
@@ -317,7 +370,7 @@ proc cb(req: Request) {.async, gcsafe.} =
   var errors = newSeq[string]()
   let rheader = newHttpHeaders([("Content-Type","application/json")])
   #echo req
-  #echo req.headers["Authorization"]
+  echo req.headers["Authorization"]
 
 
   if not req.headers.hasKey("Authorization"):
@@ -327,6 +380,7 @@ proc cb(req: Request) {.async, gcsafe.} =
 
   let atoken = req.headers["Authorization"].toString().toJWT()
   var taken_connection_slot:int = -1
+
 
   try:
     if not verify(atoken, secret_jwt):
@@ -344,13 +398,21 @@ proc cb(req: Request) {.async, gcsafe.} =
     var ws = await newWebSocket(req)
     await ws.send("Welcome to simple echo server")
 
+
     #find first slot and asign player to it
     for i in 0 .. playerConnections.high:
+      echo "z"
       if playerConnections[i] == nil:
-        playerConnections[i].conn = ws
-        playerConnections[i].id = atoken.claims["id"].node.str.parseInt()  #$jwt.claims["id"].node.str
+        echo "zz"
+        playerConnections[i] = Player(conn:ws, id: atoken.claims["id"].node.str.parseInt() )
+        #playerConnections[i].conn = ws
+        echo "zzz"
+        #playerConnections[i].id = atoken.claims["id"].node.str.parseInt()
+        echo "zzzz"
         taken_connection_slot = i
         break
+
+    echo "1111"
 
     if taken_connection_slot < 0:
       errors.add("Server is full, sorry")
@@ -361,13 +423,30 @@ proc cb(req: Request) {.async, gcsafe.} =
 
     while ws.readyState == Open:
       let packet = await ws.receiveBinaryPacket()
+      echo "--------------------"
+      #echo packet
+      #echo typeof(packet)
+
+      try:
+        var izjsona = parseJson( cast[string](packet) )
+        echo izjsona["type"].getStr()
+
+        case izjsona["type"].getStr():
+          of "sitdown":
+            await pokert.player_sit(playerConnections[taken_connection_slot], izjsona["place"].getInt, izjsona["points"].getInt)
+        #fold, raise, call, check, situp, sitdown, disconnect
+
+      except:
+        echo "beh"
+      
+
 
       case packet.join():
         of "1":
           echo "got 1"
         else:
           echo packet 
-          waitFor ws.send("Echoing: " & packet.join(), Opcode.Binary)        
+          waitFor ws.send("Echoing: " & cast[string](packet), Opcode.Binary)        
 
   except:
     let expmsg = getCurrentExceptionMsg()
@@ -378,5 +457,6 @@ proc cb(req: Request) {.async, gcsafe.} =
   playerConnections[taken_connection_slot] = nil
   
 
+asyncCheck run_game_loop()
 asyncCheck server.serve(Port(CONF["appCONF"]["port"].getint()), cb)
 runForever()
