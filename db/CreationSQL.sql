@@ -17,4 +17,32 @@ INSERT INTO roles (role) VALUES ('player');
  points BIGINT NOT NULL DEFAULT 0 
  );  
 
-  
+
+CREATE PROCEDURE remove_points( inout fromwho integer, howmuch integer)
+language plpgsql
+AS $$
+DECLARE
+   oldvalue INTEGER := -1;
+begin
+	select into oldvalue points
+	from users
+	where id=fromwho;
+
+	if oldvalue >= howmuch then
+		update users 
+		set points = oldvalue - howmuch
+		where id = fromwho;
+	else
+		fromwho = -1;
+	end if;
+end $$;
+
+
+CREATE PROCEDURE add_points( inout fromwho integer, howmuch integer)
+language plpgsql
+AS $$
+begin
+	update users 
+	set points = points + howmuch
+	where id = fromwho;
+end $$;

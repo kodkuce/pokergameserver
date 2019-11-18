@@ -151,7 +151,6 @@ proc cb(req: Request) {.async, gcsafe.} =
 
   #AUTENTIFICATION
   if req.url.path=="/auth" and req.reqMethod==HttpPost:
-    #echo "sombody trying to auth"
     
     try:
       let inputed = parseJson(req.body)
@@ -163,12 +162,13 @@ proc cb(req: Request) {.async, gcsafe.} =
         return
 
       #so if input is ok, we check if email exists and compere inputed and db pass
-      let gotuser = await pgpool.rows(sql"SELECT users.id, users.pass, users.activ, roles.role FROM users INNER JOIN roles ON users.roleid = roles.id WHERE email = ?", @[inputed["email"].getStr,])
+      let gotuser = await pgpool.rows(sql"SELECT users.id, users.pass, users.activ, roles.role, users.points FROM users INNER JOIN roles ON users.roleid = roles.id WHERE email = ?", @[inputed["email"].getStr,])
       if gotuser.len>0:#if we found user now need to give him jwtoken so he can use of other services
         # echo gotuser[0][0] #id
         # echo gotuser[0][1] #passwird
         # echo gotuser[0][2] #active
         # echo gotuser[0][3] #role
+        # echo gotuser[0][4] #role
 
         #we need verify password first
         if crypto_pwhash_str_verify(gotuser[0][1], inputed["password"].getStr)==false:
@@ -195,6 +195,7 @@ proc cb(req: Request) {.async, gcsafe.} =
           "claims": {
             "id": gotuser[0][0],
             "role": gotuser[0][3],
+            "points": gotuser[0][4],
             "exp": (getTime() + 1.days).toUnix().int
           }
         })
