@@ -7,7 +7,7 @@ import asynchttpserver, asyncdispatch
 import libsodium/sodium_sizes
 import libsodium/sodium
 import jwt, times, tables
-import json, strutils
+import json, strutils, unicode
 import smtp, pg
 
 
@@ -35,7 +35,7 @@ proc validate_username(inputed: JsonNode, errors: var seq[string])=
       errors.add("Too short username, min 5 chars allowed")
     elif inputed{"username"}.getStr.len > 20:
       errors.add("Too long username, max 20 chars allowed")
-    if inputed{"username"}.getStr.isAlphaAscii==false:
+    if inputed{"username"}.getStr.isAlpha()==false:
       errors.add("Invalid chars in username, only allowed are a-Z")
 
 proc validate_email(inputed: JsonNode, errors: var seq[string])=
@@ -152,8 +152,11 @@ proc cb(req: Request) {.async, gcsafe.} =
   #AUTENTIFICATION
   if req.url.path=="/auth" and req.reqMethod==HttpPost:
     
+    #echo req
+
     try:
       let inputed = parseJson(req.body)
+      echo inputed
       validate_password(inputed, errors)
       validate_email(inputed, errors)
 
@@ -162,17 +165,18 @@ proc cb(req: Request) {.async, gcsafe.} =
         return
 
       #so if input is ok, we check if email exists and compere inputed and db pass
-      let gotuser = await pgpool.rows(sql"SELECT users.id, users.pass, users.activ, roles.role, users.points FROM users INNER JOIN roles ON users.roleid = roles.id WHERE email = ?", @[inputed["email"].getStr,])
+      let gotuser = await pgpool.rows(sql"SELECT users.id, users.pass, users.activ, roles.role, users.points, users.nick FROM users INNER JOIN roles ON users.roleid = roles.id WHERE email = ?", @[inputed["email"].getStr,])
       if gotuser.len>0:#if we found user now need to give him jwtoken so he can use of other services
         # echo gotuser[0][0] #id
-        # echo gotuser[0][1] #passwird
+        # echo gotuser[0][1] #password
         # echo gotuser[0][2] #active
         # echo gotuser[0][3] #role
-        # echo gotuser[0][4] #role
+        # echo gotuser[0][4] #points
+        # echo gotuser[0][5] #nick
 
         #we need verify password first
         if crypto_pwhash_str_verify(gotuser[0][1], inputed["password"].getStr)==false:
-          errors.add("Wrong password!")
+          errors.add("Wrong crediaentals!")
           await req.respond(Http400, $(%*{"error":errors}), rheader)
           return 
         
@@ -196,6 +200,7 @@ proc cb(req: Request) {.async, gcsafe.} =
             "id": gotuser[0][0],
             "role": gotuser[0][3],
             "points": gotuser[0][4],
+            "nick": gotuser[0][5],
             "exp": (getTime() + 1.days).toUnix().int
           }
         })
@@ -203,6 +208,11 @@ proc cb(req: Request) {.async, gcsafe.} =
         
         await req.respond(Http200, $(%*{"ok":"Auth successful", "token":atoken}), rheader)
         return
+
+      else: #there is no user with that email
+        errors.add("Wrong crediaentals!")
+        await req.respond(Http400, $(%*{"error":errors}), rheader)
+        return 
 
     except JsonParsingError as er:
       errors.add("Recived json in bad format")
